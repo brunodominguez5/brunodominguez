@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Calculadora de diversidad de trips</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d2a1f;--mut:#5b6b5e;--card:#fff;--ac:#2f6b3a;--c2:#c0602a;--bd:#d9ded6;--an:#eef5ee;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141a15;--fg:#e6ece6;--mut:#9aa89c;--card:#1c241d;--ac:#7fc48b;--c2:#e8956a;--bd:#2f3a30;--an:#223025;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141a15;--fg:#e6ece6;--mut:#9aa89c;--card:#1c241d;--ac:#7fc48b;--c2:#e8956a;--bd:#2f3a30;--an:#223025;color-scheme:dark}
+html,body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 Georgia,"Times New Roman",serif}
+main{max-width:800px;margin:0 auto;padding:14px}
+h1{font-size:21px;margin:6px 0}h2{font-size:16px;margin:0 0 8px;color:var(--ac)}
+p{color:var(--mut);font-size:13px;margin:6px 0}.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;margin:12px 0}
+button{font:inherit;font-size:14px;padding:9px 16px;border-radius:8px;border:1px solid var(--ac);background:var(--ac);color:var(--bg);margin:8px 6px 0 0}
+button.sm{background:none;color:var(--ac);font-size:12.5px;padding:5px 10px}
+button.x{margin:0 0 0 2px;padding:0 6px;font-size:14px;border-color:var(--bd);color:var(--mut);background:none}
+.sc{overflow-x:auto}table{border-collapse:collapse;font-size:12.5px}td,th{border:1px solid var(--bd);padding:3px 5px;text-align:right;white-space:nowrap}th{background:var(--bg)}th:first-child{text-align:left}
+input,select{font:inherit;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--bd);border-radius:5px;padding:4px}
+input.n{width:92px}input.m{width:54px;text-align:right}select{display:block;width:100%;margin-top:3px;font-size:12px}
+label{font-size:13px;margin-right:12px}label input{width:90px}
+.ex{border-left:3px solid var(--ac);padding:2px 12px;margin-top:10px}.ex p{color:var(--fg);font-size:14px}.an{background:var(--an);border-radius:8px;padding:8px 12px;margin-top:10px}.an p{color:var(--fg);font-size:14px}
+svg{width:100%;height:auto}.err{color:var(--c2)}
+</style></head><body><main>
+<h1>Calculadora de diversidad de trips</h1>
+<p>Cargá los conteos en la tabla: cada columna es un lote y cada fila una especie. Si ya los tenés en Excel, copiá el bloque y pegalo en la primera celda: la tabla se agranda sola.</p>
+<div class="card"><h2>1. Campañas</h2>
+<label>Campaña A <input id="c0"></label><label>Campaña B <input id="c1"></label>
+<h2 style="margin-top:14px">2. Individuos por lote y especie</h2>
+<div class="sc"><table id="g"></table></div>
+<button class="sm" onclick="addLot()">+ Lote</button><button class="sm" onclick="addSp()">+ Especie</button><button class="sm" onclick="half()">Primera mitad A, resto B</button>
+<p>Dejá en blanco los ceros. Los datos quedan guardados en este navegador.</p>
+<button onclick="run()">Calcular</button><button class="sm" onclick="ej()">Ver ejemplo (datos inventados)</button><button class="sm" onclick="reset()">Empezar de cero</button></div>
+<div id="out"></div>
+<div class="card"><h2>Fórmulas</h2><p>H’ = −Σ pi·ln(pi) · Simpson (1−D) = 1 − Σ pi² · Pielou J’ = H’/ln(S) · Bray-Curtis (disimilitud) = 1 − 2Σmin(xi,yi)/(Σxi+Σyi). Dendrograma: UPGMA. Mann-Whitney: p exacta por permutación (bilateral). ANOSIM: 999 permutaciones (el p varía levemente entre corridas).</p></div>
+</main><script>
+const $=i=>document.getElementById(i),sum=a=>a.reduce((x,y)=>x+y,0),q=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const f=(x,d=3)=>Number.isFinite(x)?x.toFixed(d).replace(".",","):"—";
+const med=a=>{const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
+const mean=a=>{a=a.filter(Number.isFinite);return a.length?sum(a)/a.length:NaN};
+let S,tid=0;
+function init(){S={camps:["2023/24","2024/25"],lots:[0,1,2,3].map(i=>({n:"L"+(i+1),c:i<2?0:1})),sp:["Caliothrips phaseoli","Frankliniella schultzei","Frankliniella occidentalis"],M:[]};S.M=S.sp.map(()=>S.lots.map(()=>""))}
+try{S=JSON.parse(localStorage.getItem("trips1"));if(!S||!S.lots)init()}catch(x){init()}
+const save=()=>{try{localStorage.setItem("trips1",JSON.stringify(S))}catch(x){}},upd=()=>{save();render()};
+function render(){$("c0").value=S.camps[0];$("c1").value=S.camps[1];
+let h="<tr><th></th>"+S.lots.map((l,j)=>`<th><input class="n" data-t="ln" data-c="${j}" value="${q(l.n)}" placeholder="Lote"><button class="x" data-x="l" data-c="${j}" title="Quitar lote">×</button><select data-t="lc" data-c="${j}">${S.camps.map((c,k)=>`<option value="${k}"${l.c==k?" selected":""}>${q(c)}</option>`).join("")}</select></th>`).join("")+"</tr>";
+S.sp.forEach((s,r)=>{h+=`<tr><th><input class="n" style="width:150px" data-t="sn" data-r="${r}" value="${q(s)}" placeholder="Especie"><button class="x" data-x="s" data-r="${r}" title="Quitar especie">×</button></th>`+S.lots.map((_,j)=>`<td><input class="m" inputmode="numeric" data-t="m" data-r="${r}" data-c="${j}" value="${q(S.M[r][j])}"></td>`).join("")+"</tr>"});
+$("g").innerHTML=h}
+const g=$("g");
+g.oninput=ev=>{const t=ev.target.dataset,v=ev.target.value;if(t.t=="ln")S.lots[t.c].n=v;else if(t.t=="sn")S.sp[t.r]=v;else if(t.t=="m")S.M[t.r][t.c]=v;save()};
+g.onchange=ev=>{const t=ev.target.dataset;if(t.t=="lc"){S.lots[t.c].c=+ev.target.value;save()}};
+g.onclick=ev=>{const t=ev.target.dataset;if(t.x=="l"&&S.lots.length>1){S.lots.splice(t.c,1);S.M.forEach(r=>r.splice(t.c,1));upd()}else if(t.x=="s"&&S.sp.length>1){S.sp.splice(t.r,1);S.M.splice(t.r,1);upd()}};
+g.onpaste=ev=>{const t=ev.target.dataset;if(!t.t||t.t=="lc")return;const x=(ev.clipboardData||window.clipboardData).getData("text");if(!/[\t\n]/.test(x.trim()))return;ev.preventDefault();
+const R=x.replace(/\r/g,"").replace(/\n+$/,"").split("\n").map(r=>r.split("\t")),hdr=t.t=="ln",r0=hdr?-1:+t.r,c0=t.t=="sn"?-1:+t.c;
+R.forEach((row,i)=>row.forEach((v,k)=>{const rr=r0+i,cc=c0+k;if(hdr){while(S.lots.length<=cc)addLot(1);S.lots[cc].n=v.trim();return}
+while(S.sp.length<=rr)addSp(1);if(cc<0){S.sp[rr]=v.trim();return}while(S.lots.length<=cc)addLot(1);S.M[rr][cc]=v.trim().replace(",",".")}));upd()};
+function addLot(s){S.lots.push({n:"L"+(S.lots.length+1),c:S.lots.length?S.lots[S.lots.length-1].c:0});S.M.forEach(r=>r.push(""));if(!s)upd()}
+function addSp(s){S.sp.push("");S.M.push(S.lots.map(()=>""));if(!s)upd()}
+function half(){S.lots.forEach((l,j)=>l.c=j<S.lots.length/2?0:1);upd()}
+function reset(){init();$("out").innerHTML="";upd()}
+$("c0").onchange=()=>{S.camps[0]=$("c0").value||"A";upd()};$("c1").onchange=()=>{S.camps[1]=$("c1").value||"B";upd()};
+function ind(c){const N=sum(c),p=c.filter(x=>x>0).map(x=>x/N),S=p.length,H=-sum(p.map(x=>x*Math.log(x)));
+return{N,S,H:N?H:NaN,Si:N?1-sum(p.map(x=>x*x)):NaN,J:S>1?H/Math.log(S):NaN}}
+function bc(a,b){const t=sum(a)+sum(b);return t?1-2*sum(a.map((x,i)=>Math.min(x,b[i])))/t:1}
+function rank(v){const N=v.length,ix=v.map((_,i)=>i).sort((a,b)=>v[a]-v[b]),r=Array(N);
+for(let i=0;i<N;){let j=i;while(j+1<N&&v[ix[j+1]]==v[ix[i]])j++;for(let k=i;k<=j;k++)r[ix[k]]=(i+j)/2+1;i=j+1}return r}
+function tbl(h,r){const id="t"+tid++;return`<div class="sc"><table id="${id}"><tr>${h.map(x=>`<th>${x}</th>`).join("")}</tr>${r.map(x=>`<tr>${x.map((y,i)=>i?`<td>${y}</td>`:`<th>${y}</th>`).join("")}</tr>`).join("")}</table></div><button class="sm" onclick="cp('${id}')">Copiar tabla</button>`}
+function cp(id){const t=[...$(id).rows].map(r=>[...r.cells].map(c=>c.textContent).join("\t")).join("\n");try{navigator.clipboard.writeText(t)}catch(e){}}
+function cpa(b){try{navigator.clipboard.writeText(b.previousElementSibling.textContent)}catch(e){}}
+const card=(t,b,a,e)=>`<div class="card"><h2>${t}</h2>${b}${e?`<div class="ex"><b>¿Cómo se lee?</b><p>${e}</p></div>`:""}${a?`<div class="an"><b>Análisis</b><p>${a}</p><button class="sm" onclick="cpa(this)">Copiar análisis</button></div>`:""}</div>`;
+function upgma(D,n){let cl=[...Array(n)].map((_,i)=>({leaf:i,m:[i],h:0}));
+while(cl.length>1){let bi=0,bj=1,best=1e9;
+for(let i=0;i<cl.length;i++)for(let j=i+1;j<cl.length;j++){let s=0;for(const a of cl[i].m)for(const b of cl[j].m)s+=D[a][b];s/=cl[i].m.length*cl[j].m.length;if(s<best){best=s;bi=i;bj=j}}
+const nc={l:cl[bi],r:cl[bj],m:[...cl[bi].m,...cl[bj].m],h:best};cl=cl.filter((_,k)=>k!=bi&&k!=bj);cl.push(nc)}
+return cl[0]}
+function dendro(t,lots,camp,cs){const ord=[];(function w(n){n.leaf!==undefined?ord.push(n.leaf):(w(n.l),w(n.r))})(t);
+const mx=t.h||1,W=400,lx=110,rh=20,H=ord.length*rh+34,Y={},X=h=>lx+h/mx*W;let s="";
+ord.forEach((l,i)=>Y[l]=i*rh+12);
+(function d(n){if(n.leaf!==undefined){n.y=Y[n.leaf];return}d(n.l);d(n.r);n.y=(n.l.y+n.r.y)/2;
+s+=`<path d="M${X(n.l.h)} ${n.l.y}H${X(n.h)}V${n.r.y}H${X(n.r.h)}" fill="none" stroke="currentColor" stroke-width="1.3"/>`})(t);
+ord.forEach(l=>s+=`<text x="${lx-6}" y="${Y[l]+4}" text-anchor="end" font-size="12" fill="${cs.indexOf(camp[l])?"var(--c2)":"var(--ac)"}">${q(lots[l])}</text>`);
+[0,.5,1].forEach(z=>s+=`<text x="${X(z*mx)}" y="${H-6}" text-anchor="middle" font-size="11" fill="currentColor">${f(z*mx,2)}</text>`);
+return`<svg viewBox="0 0 ${lx+W+30} ${H}">${s}</svg><p>Eje: disimilitud de Bray-Curtis. Color según campaña (${cs.map(q).join(" / ")}).</p>`}
+function mw(a,b){const v=[...a,...b],N=v.length,n1=a.length,r=rank(v),mu=n1*b.length/2,g=s=>Math.abs(s-n1*(n1+1)/2-mu);
+const obs=g(sum(r.slice(0,n1)));if(N>26)return{U:NaN,p:NaN};let tot=0,ge=0;
+(function rec(s,k,c){if(c==n1){tot++;if(g(s)>=obs-1e-9)ge++;return}if(N-k<n1-c)return;rec(s+r[k],k+1,c+1);rec(s,k+1,c)})(0,0,0);
+const U1=sum(r.slice(0,n1))-n1*(n1+1)/2;return{U:Math.min(U1,n1*b.length-U1),p:ge/tot}}
+function anosim(D,g){const n=g.length,pr=[];for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)pr.push([i,j,Math.round(D[i][j]*1e10)]);
+const rk=rank(pr.map(x=>x[2])),M=pr.length;
+const R=z=>{let b=0,nb=0,w=0,nw=0;pr.forEach((p,k)=>{if(z[p[0]]==z[p[1]]){w+=rk[k];nw++}else{b+=rk[k];nb++}});return(b/nb-w/nw)/(M/2)};
+const r0=R(g);let ge=0;const z=g.slice();
+for(let k=0;k<999;k++){for(let i=n-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[z[i],z[j]]=[z[j],z[i]]}if(R(z)>=r0-1e-12)ge++}
+return{R:r0,p:(ge+1)/1000}}
+function run(){tid=0;const out=$("out"),lots=S.lots.map((l,j)=>l.n||"Lote "+(j+1)),camp=S.lots.map(l=>S.camps[l.c]),sp=S.sp.map((s,i)=>s||"Especie "+(i+1)),
+M=S.M.map(r=>r.map(v=>+String(v).replace(",",".")||0)),n=lots.length,col=j=>M.map(r=>r[j]),cs=[...new Set(camp)],rs=M.map(sum),tot=sum(rs);
+if(!tot){out.innerHTML=card("Faltan datos",'<p class="err">Cargá al menos un conteo en la tabla.</p>');return}
+const I=lots.map((_,j)=>ind(col(j))),rw=(nm,x,c)=>[q(nm),q(c),x.N,x.S,f(x.H),f(x.Si),f(x.J)],hd=["Lote","Campaña","N","S (riqueza)","H’","1−D","J’"];
+let h='<p>Los análisis son automáticos y orientativos: revisalos y adaptalos antes de incluirlos en la tesis.</p>';
+const am=(fn,mx)=>{let b=-1,v=mx?-1e9:1e9;I.forEach((x,j)=>{const y=fn(x);if(Number.isFinite(y)&&(mx?y>v:y<v)){v=y;b=j}});return b},jH=am(x=>x.H,1),jL=am(x=>x.H,0),Jm=mean(I.map(x=>x.J));
+const bj=j=>j<.5?"baja, con dominancia marcada de pocas especies":j<.8?"intermedia":"alta, con abundancias parejas entre especies",im=rs.indexOf(Math.max(...rs));
+let a1=`Se registraron ${tot} individuos pertenecientes a ${rs.filter(x=>x>0).length} especies. La especie más abundante fue ${q(sp[im])}, con el ${f(100*rs[im]/tot,1)}% del total. La riqueza por lote varió entre ${Math.min(...I.map(x=>x.S))} y ${Math.max(...I.map(x=>x.S))} especies.`;
+if(jH>=0)a1+=` La mayor diversidad (H’) correspondió a ${q(lots[jH])} (${f(I[jH].H)}) y la menor a ${q(lots[jL])} (${f(I[jL].H)}).`;
+if(Number.isFinite(Jm))a1+=` La equitatividad media fue J’ = ${f(Jm)}, es decir ${bj(Jm)}.`;
+const z=I.filter(x=>!x.N).length;if(z)a1+=` ${z} lote(s) no tuvieron individuos y quedan sin índices.`;
+h+=card("Índices por lote",tbl(hd,lots.map((l,j)=>rw(l,I[j],camp[j]))),a1,"N es el total de individuos contados en el lote y S es cuántas especies distintas aparecen. H’ y 1−D resumen la diversidad en un solo número: suben cuando hay más especies y cuando sus cantidades son más parecidas entre sí (1−D va de 0 a 1; H’ suele ubicarse entre 0 y 3). J’ va de 0 a 1 y muestra qué tan parejo es el reparto: cerca de 1, todas las especies tienen cantidades similares; cerca de 0, una sola especie domina casi todo. Un lote con pocas especies y una que predomina da valores bajos; uno con muchas especies en cantidades parecidas da valores altos."+(jH>=0?" En tus datos, el lote más diverso es "+q(lots[jH])+" y el menos diverso es "+q(lots[jL])+".":""));
+const G=cs.map(c=>{const ix=lots.map((_,j)=>j).filter(j=>camp[j]==c),v=M.map(r=>sum(ix.map(j=>r[j]))),x=ind(v),k=v.indexOf(Math.max(...v));return{c,x,dom:sp[k],pc:x.N?100*v[k]/x.N:0}});
+const gr=G.map(y=>rw("Campaña "+y.c,y.x,"agrupada"));gr.push(rw("Total",ind(rs),"todos"));
+let a2=G.map(y=>`En la campaña ${q(y.c)} se contaron ${y.x.N} individuos (S = ${y.x.S}, H’ = ${f(y.x.H)}, J’ = ${f(y.x.J)}); la especie dominante fue ${q(y.dom)} (${f(y.pc,1)}%).`).join(" ");
+if(G.length>1){const o=[...G].sort((a,b)=>(b.x.H||0)-(a.x.H||0));a2+=` La mayor diversidad agrupada correspondió a la campaña ${q(o[0].c)} y la menor a ${q(o[o.length-1].c)}. Como estos valores dependen del número total de individuos y de lotes de cada campaña, conviene contrastarlos con la comparación entre lotes (Mann-Whitney).`}
+h+=card("Por campaña (lotes agrupados) y total",tbl(hd,gr),a2,"Son los mismos índices de la tabla anterior, pero juntando todos los lotes de cada campaña como si fueran un solo lote grande. Sirve para comparar campañas de un vistazo. Hay que tener cuidado: una campaña en la que se contaron más individuos o más lotes tiende a mostrar más especies simplemente porque se miró más.");
+if(n>1){const D=lots.map((_,i)=>lots.map((_,j)=>bc(col(i),col(j)))),all=[],wi=[],bt=[];let mn={d:9},mxp={d:-1};
+for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){const d=D[i][j];all.push(d);(camp[i]==camp[j]?wi:bt).push(d);if(d<mn.d)mn={d,i,j};if(d>mxp.d)mxp={d,i,j}}
+const m=mean(all);let a3=`La disimilitud media entre lotes fue ${f(m,2)} (0 = idénticos, 1 = sin especies en común), lo que indica una composición de especies ${m<.3?"muy parecida":m<.6?"moderadamente parecida":"muy distinta"}. Los lotes más parecidos fueron ${q(lots[mn.i])} y ${q(lots[mn.j])} (${f(mn.d,2)}) y los más diferentes ${q(lots[mxp.i])} y ${q(lots[mxp.j])} (${f(mxp.d,2)}).`;
+if(wi.length&&bt.length)a3+=` Dentro de una misma campaña la disimilitud media fue ${f(mean(wi),2)} y entre campañas ${f(mean(bt),2)}: ${mean(bt)>mean(wi)+.05?"los lotes tienden a parecerse más dentro de la misma campaña que entre campañas":"no se aprecia que los lotes se agrupen según la campaña"}.`;
+h+=card("Disimilitud de Bray-Curtis",tbl(["",...lots.map(q)],lots.map((l,i)=>[q(l),...D[i].map(x=>f(x,2))])),a3,"Mide qué tan distintos son dos lotes según las especies que tienen y cuántos individuos hay de cada una. Cada casilla compara un lote (fila) con otro (columna). Un 0 significa que los dos lotes son idénticos y un 1 que no comparten ninguna especie; por ejemplo, 0,20 es muy parecido y 0,80 es muy distinto. La diagonal siempre vale 0 porque compara cada lote consigo mismo. En tus datos, los lotes más parecidos son "+q(lots[mn.i])+" y "+q(lots[mn.j])+" ("+f(mn.d,2)+").");
+const t=upgma(D,n),cm=a=>cs.map(c=>a.filter(j=>camp[j]==c).length+" de "+q(c)).join(", "),pu=a=>Math.max(...cs.map(c=>a.filter(j=>camp[j]==c).length))/a.length;
+let a4=`La primera división del dendrograma (disimilitud ${f(t.h,2)}) separa un grupo de ${t.l.m.length} lote(s) (${cm(t.l.m)}) de otro de ${t.r.m.length} lote(s) (${cm(t.r.m)}).`;
+if(cs.length>1&&n>2)a4+=pu(t.l.m)>=.8&&pu(t.r.m)>=.8?" Los grupos coinciden en gran medida con las campañas, lo que sugiere que la campaña influye en la composición de especies.":" Los grupos mezclan lotes de distintas campañas, por lo que la composición parece responder más a características propias de cada lote que a la campaña.";
+h+=card("Dendrograma (UPGMA)",dendro(t,lots,camp,cs),a4,"Es un árbol que ordena los lotes según su parecido. Los lotes cuyas ramas se unen cerca de los nombres (a la izquierda) son muy parecidos; los que recién se unen hacia la derecha son más diferentes. Las ramas que se juntan primero forman grupos de lotes con una composición de especies similar. Los colores indican la campaña: si cada color queda junto, los lotes se parecen más dentro de su campaña.");
+if(cs.length==2){const gi=c=>lots.map((_,j)=>j).filter(j=>camp[j]==c),A=gi(cs[0]),B=gi(cs[1]);let a5=[];
+const mt=[["S",x=>x.S],["H’",x=>x.H],["1−D",x=>x.Si],["J’",x=>x.J]].map(([nm,fn])=>{const a=A.map(j=>fn(I[j])).filter(Number.isFinite),b=B.map(j=>fn(I[j])).filter(Number.isFinite),r=mw(a,b),ma=med(a),mb=med(b);
+a5.push(r.p<.05?`${nm}: diferencia significativa (p = ${f(r.p,4)}), con valores mayores en la campaña ${q(ma>mb?cs[0]:cs[1])}`:`${nm}: sin diferencias significativas (p = ${f(r.p,4)})`);return[nm,f(ma),f(mb),f(r.U,1),f(r.p,4)]});
+h+=card("Mann-Whitney entre campañas",tbl(["Índice","Mediana "+q(cs[0]),"Mediana "+q(cs[1]),"U","p"],mt)+`<p>n = ${A.length} y ${B.length} lotes. Significancia: p &lt; 0,05.</p>`,a5.join("; ")+". Con pocos lotes por campaña la potencia de la prueba es baja: la ausencia de significancia no implica que las campañas sean iguales.","Compara los lotes de una campaña con los de la otra para ver si la diferencia en cada índice es real o puede deberse al azar. La mediana es el valor central de los lotes de cada campaña. El valor p es la probabilidad de encontrar una diferencia como la observada si en realidad no hubiera ninguna: si es menor a 0,05 se considera que la diferencia es real (significativa); si es mayor, no se puede asegurar que haya diferencia. U es el valor de la prueba y, por sí solo, no hace falta interpretarlo. En tus datos, "+mt.filter(r=>parseFloat(r[4].replace(",","."))<.05).length+" de 4 índices mostraron diferencias significativas entre campañas.");
+const an=anosim(D,camp.map(c=>c==cs[0]?0:1)),R=an.R;
+h+=card("ANOSIM (composición entre campañas)",tbl(["R","p"],[[f(R,3),f(an.p,3)]]),`R = ${f(R)} y p = ${f(an.p)}. `+(an.p<.05?(R>.75?"La composición de especies difiere claramente entre campañas.":R>.5?"La composición difiere entre campañas, con cierto solapamiento.":R>.25?"La diferencia es significativa pero la separación entre campañas es débil.":"La diferencia es significativa, pero su magnitud es muy baja (R pequeño)."):"No hay evidencia de que la composición de especies difiera entre campañas.")+" R cercano a 0 indica composición similar y cercano a 1, composición distinta.","Responde a otra pregunta: si los lotes de una misma campaña se parecen entre sí más de lo que se parecen con los de la otra campaña. R va de 0 a 1: cerca de 0, las campañas no se distinguen por las especies que tienen; cerca de 1, cada campaña tiene una composición propia. El p indica si el resultado es confiable (menor a 0,05) o si podría ser casualidad. En tus datos, "+(an.p<.05?"la composición de especies sí difiere entre campañas.":"no se puede asegurar que la composición de especies difiera entre campañas."))}
+else h+=card("Comparación entre campañas",'<p>Mann-Whitney y ANOSIM se calculan cuando los lotes pertenecen a exactamente 2 campañas.</p>')}
+out.innerHTML=h;out.scrollIntoView({behavior:"smooth"})}
+function ej(){const sp=["Caliothrips phaseoli","Frankliniella schultzei","Frankliniella occidentalis","Thrips tabaci","Enneothrips flavens","Neohydatothrips sp."],mx=[120,40,15,8,5,3];let s=7;const r=()=>(s=s*16807%2147483647)/2147483647;
+S={camps:["2023/24","2024/25"],lots:[...Array(16)].map((_,i)=>({n:"L"+(i+1),c:i<8?0:1})),sp,M:[]};S.M=sp.map((_,k)=>S.lots.map(()=>String(Math.floor(r()*r()*mx[k]))));upd();run()}
+render();
+</script></body></html>
